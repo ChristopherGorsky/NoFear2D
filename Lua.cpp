@@ -6,7 +6,7 @@ void lua_stackDump(lua_State *L) {
 	dbg.Print("---------- [Lua Stack Dump] ----------");
 
 	int top = lua_gettop(L);
-	dbg.Print("(btm:top)\t\tStack Size: %i", top);
+	dbg.Print("(btm:top)      Stack Size: %i", top);
 
 	for (int i = 1; i <= top; i++) {  /* repeat for each level */
 		

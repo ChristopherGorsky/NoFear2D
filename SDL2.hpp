@@ -18,6 +18,14 @@
 #define IMG_MODE_A GL_RGBA
 #endif
 
+#ifndef TRUE
+#define TRUE 1
+#endif 
+
+#ifndef FALSE
+#define FALSE 0
+#endif
+
 //Mac
 #ifdef __APPLE__
 #include <SDL2/SDL.h>
@@ -72,4 +80,5 @@ struct Point {
 
 	T x, y;
 };
+
 #endif

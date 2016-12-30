@@ -20,6 +20,10 @@ public:
 		return instance;
 	}
 
+	std::vector<std::string>& getLog(void) {
+		return log;
+	}
+
 private:
 
 	std::vector<std::string> log;

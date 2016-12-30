@@ -55,7 +55,7 @@ namespace Graphics2D {
 		return true;
 	}
 
-	bool Sprite::loadFromRenderedText(TTF_Font* font, float* textColor, const char* format, ...) {
+	bool Sprite::loadFromRenderedText(TTF_Font* font, float textColor[], const char* format, ...) {
 
 		char buffer[STRBUFF];
 
@@ -121,7 +121,14 @@ namespace Graphics2D {
 		return true;
 	}
 
-	bool Sprite::loadFromRenderedText(TTF_Font* font, float* textColor, std::string text) {
+	bool Sprite::loadFromRenderedText(TTF_Font* font, const char* str) {
+		
+		float color[4];
+		glGetFloatv(GL_CURRENT_COLOR, color);
+		return loadFromRenderedText(font, color, "%s", str);
+	}
+
+	bool Sprite::loadFromRenderedText(TTF_Font* font, float textColor[], std::string text) {
 		return loadFromRenderedText(font, textColor, (const char*) text.c_str());
 	}
 
@@ -152,18 +159,23 @@ namespace Graphics2D {
 		return mFrame;
 	}
 
-	void Sprite::render(float x, float y) {
-
+	void Sprite::render(float x, float y, bool center) {
+		
 		if (mLoaded) {
 
 			glPushMatrix();
-
+			
+			glEnable(GL_BLEND);
 			glEnable(GL_TEXTURE_2D);
 			glBindTexture(GL_TEXTURE_2D, mTexture);
 
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glColor3f(1, 1, 1);
+			
+			if (center) {
+				x -= (mWidth / 2);
+			}
 
 			glBegin(GL_QUADS);
 				glTexCoord2f(0, 0); glVertex2f(x, y);
@@ -173,8 +185,14 @@ namespace Graphics2D {
 			glEnd();
 
 			glDisable(GL_TEXTURE_2D);
+			glDisable(GL_BLEND);
+
 			glPopMatrix();
 		}
+	}
+
+	void Sprite::render(float x, float y) {
+		render(x, y, false);
 	}
 
 	void Sprite::render(float x, float y, float w, float h) {
@@ -183,6 +201,7 @@ namespace Graphics2D {
 
 			glPushMatrix();
 
+			glEnable(GL_BLEND);
 			glEnable(GL_TEXTURE_2D);
 			glBindTexture(GL_TEXTURE_2D, mTexture);
 
@@ -198,6 +217,8 @@ namespace Graphics2D {
 			glEnd();
 
 			glDisable(GL_TEXTURE_2D);
+			glDisable(GL_BLEND);
+
 			glPopMatrix();
 		}
 	}
@@ -283,6 +304,23 @@ namespace Graphics2D {
 	void DrawHollowPolygon(float x, float y, float radius, int angles) {
 
 		glBegin(GL_LINE_LOOP);
+
+		float theta, x1, y1;
+		for (int i = 0; i < angles; i++) {
+
+			theta = (2.0f * PI) * (float(i) / float(angles));
+			x1 = radius * cosf(theta);
+			y1 = radius * sinf(theta);
+
+			glVertex2f(x1 + x, y1 + y);
+		}
+
+		glEnd();
+	}
+
+	void DrawFilledPolygon(float x, float y, float radius, int angles) {
+
+		glBegin(GL_TRIANGLE_FAN);
 
 		float theta, x1, y1;
 		for (int i = 0; i < angles; i++) {
@@ -396,5 +434,198 @@ namespace Graphics2D {
 		DrawRoundedQuad(x, y, w, h, curve, pts);
 
 		glDisable(GL_BLEND);
+	}
+
+	void setColor(float r, float g, float b, float a) {
+		glColor4f(r, g, b, a);
+	}
+
+	void setColor(float color[]) {
+		glColor4fv(color);
+	}
+}
+
+namespace Lua_Graphics {
+
+	using namespace Graphics2D;
+
+	int lua_newSprite(lua_State* l) {
+
+		Sprite* sprite = NULL;
+
+		int argc = lua_gettop(l);
+		if (argc == 0) {
+			sprite = new Sprite();
+		} else {
+			const char* file = luaL_checkstring(l, 1);
+			sprite = new Sprite(file);
+		}
+
+		lua_pushlightuserdata(l, sprite);
+
+		return	1;
+	}
+
+	int lua_spriteLoad(lua_State* l) {
+
+		Sprite* sprite = (Sprite*)lua_touserdata(l, 1);
+		const char* file = luaL_checkstring(l, 2);
+		if (sprite != NULL) {
+			bool spriteLoaded = sprite->load(file);
+			spriteLoaded ? lua_pushboolean(l, TRUE) : lua_pushnil(l);
+		} else {
+			Debug& dbg = Debug::GetInstance();
+			dbg.Print("Error, NULL sprite");
+			lua_pushnil(l);
+		}
+
+		return 1;
+	}
+
+	int lua_spriteLoaded(lua_State* l) {
+
+		Sprite* sprite = (Sprite*)lua_touserdata(l, 1);
+		if (sprite != NULL) {
+			sprite->loaded() ? lua_pushboolean(l, TRUE) : lua_pushnil(l);
+		} else {
+			Debug& dbg = Debug::GetInstance();
+			dbg.Print("Error, NULL sprite");
+			lua_pushboolean(l, FALSE);
+		}
+
+		return 1;
+	}
+
+	int lua_spriteGenTextureFromString(lua_State* l) {
+
+		Sprite* sprite = (Sprite*)lua_touserdata(l, 1);
+		TTF_Font* font = (TTF_Font*)lua_touserdata(l, 2);
+		const char* str = luaL_checkstring(l, 3);
+
+		if (sprite != NULL) {
+			lua_pushboolean(l, sprite->loadFromRenderedText(font, str));
+		} else {
+			Debug& dbg = Debug::GetInstance();
+			dbg.Print("Error, NULL sprite");
+			lua_pushboolean(l, FALSE);
+		}
+
+		return 1;
+	}
+
+	int lua_spriteRender(lua_State* l) {
+
+		Sprite* sprite = (Sprite*)lua_touserdata(l, 1);
+		if (sprite == NULL) {
+			return 0;
+		}
+
+		int isTable = lua_istable(l, 1);
+		if (isTable == TRUE) {
+
+		} else {
+
+			int argc = lua_gettop(l);
+			if (argc == 2) {
+
+				float x = (float)lua_tonumber(l, 2);
+				float y = (float)lua_tonumber(l, 3);
+				sprite->render(x, y);
+
+			} else if (argc == 4) {
+
+				float x = (float)lua_tonumber(l, 2);
+				float y = (float)lua_tonumber(l, 3);
+				float w = (float)lua_tonumber(l, 4);
+				float h = (float)lua_tonumber(l, 5);
+				sprite->render(x, y, w, h);
+
+			} else {
+
+				return 0;
+			}
+		}
+
+		return 0;
+	}
+
+	int lua_drawHollowQuad(lua_State* l) {
+		
+		float x = (float)lua_tonumber(l, 1);
+		float y = (float)lua_tonumber(l, 2);
+		float w = (float)lua_tonumber(l, 3);
+		float h = (float)lua_tonumber(l, 4);
+		DrawHollowQuad(x, y, w, h);
+
+		return 0;
+	}
+
+	int lua_drawFilledQuad(lua_State* l) {
+		
+		float x = (float)lua_tonumber(l, 1);
+		float y = (float)lua_tonumber(l, 2);
+		float w = (float)lua_tonumber(l, 3);
+		float h = (float)lua_tonumber(l, 4);
+		DrawFilledQuad(x, y, w, h);
+
+		return 0;
+	}
+
+	int lua_drawHollowPoly(lua_State* l) {
+
+		float x = (float)lua_tonumber(l, 1);
+		float y = (float)lua_tonumber(l, 2);
+		float radius = (float)lua_tonumber(l, 3);
+		int	  angles = (int)lua_tointeger(l, 4);
+		DrawHollowPolygon(x, y, radius, angles);
+		
+		return 0;
+	}
+
+	int lua_drawLifeCircle(lua_State* l) {
+
+		float healthCur = (float)lua_tonumber(l, 1);
+		float healthMax = (float)lua_tonumber(l, 2);
+		float x = (float)lua_tonumber(l, 3);
+		float y = (float)lua_tonumber(l, 4);
+		float size = (float)lua_tonumber(l, 5);
+		DrawLifeCircle(healthMax, healthMax, x, y, size);
+
+		return 0;
+	}
+	
+	int lua_DrawRoundedQuad(lua_State * l) {
+
+		float x		= (float)lua_tonumber(l, 1);
+		float y		= (float)lua_tonumber(l, 2);
+		float w		= (float)lua_tonumber(l, 3);
+		float h		= (float)lua_tonumber(l, 4);
+		int curve	= (int)lua_tointeger(l, 5);
+		int points	= (int)lua_tointeger(l, 6);
+		DrawRoundedQuad(x, y, w, h, curve, points);
+
+		return 0;
+	}
+
+	int lua_setColor(lua_State *l) {
+		
+		int argc = lua_gettop(l);
+		if (argc == 3) {
+
+			float r = (float)lua_tonumber(l, 1);
+			float g = (float)lua_tonumber(l, 2);
+			float b = (float)lua_tonumber(l, 3);
+			SetColor(r, g, b);
+
+		} else if (argc == 4) {
+
+			float r = (float)lua_tonumber(l, 1);
+			float g = (float)lua_tonumber(l, 2);
+			float b = (float)lua_tonumber(l, 3);
+			float a = (float)lua_tonumber(l, 4);
+			SetColor(r, g, b, a);
+		} 
+
+		return 0;
 	}
 }
